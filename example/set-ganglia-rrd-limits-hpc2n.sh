@@ -32,7 +32,9 @@
 # For more information, please refer to <https://unlicense.org>
 
 
+# Add main script dir, ie our uplevel dir, to PATH
 dir=$(dirname $0)
+export PATH=$PATH:$dir/..
 
 export RRDCACHED_ADDRESS="unix:/var/run/rrdcached.sock"
 
@@ -43,4 +45,4 @@ let netmax=2*2*100*1000*1000*1000/8
 # packet size) and round it to even millions
 let pktmax=$netmax/84/1000000*1000000
 
-$dir/set-ganglia-rrd-limits.pl --dry-run bytes_in.rrd:--maximum:$netmax bytes_in.rrd:--minimum:0 bytes_out.rrd:--maximum:$netmax bytes_out.rrd:--minimum:0 pkts_in.rrd:--maximum:$pktmax pkts_in.rrd:--minimum:0 pkts_out.rrd:--maximum:$pktmax pkts_out.rrd:--minimum:0
+set-ganglia-rrd-limits.pl --dry-run bytes_in.rrd:--maximum:$netmax bytes_in.rrd:--minimum:0 bytes_out.rrd:--maximum:$netmax bytes_out.rrd:--minimum:0 pkts_in.rrd:--maximum:$pktmax pkts_in.rrd:--minimum:0 pkts_out.rrd:--maximum:$pktmax pkts_out.rrd:--minimum:0
