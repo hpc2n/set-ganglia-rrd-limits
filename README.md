@@ -1,13 +1,13 @@
-# set-ganglia-rrd-limits
+# set-ganglia-rrd-limits.pl
 
 ## Introduction
-
-Script to change Ganglia RRD min/max limits.
 
 This script checks RRDs found in the Ganglia RRD directory and ensures that
 min/max is set to the desired values.
 
-Supports rrdcached.
+RRDs in the `__SummaryInfo__` directories receive special handling, the max value is set to the desired per-host value multiplied with the number of hosts in that hierarchy.
+
+Supports rrdcached via the `RRDCACHED_ADDRESS` environment variable.
 
 ## Usage
 
