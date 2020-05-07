@@ -27,6 +27,8 @@ use warnings;
 
 use RRDs;
 use Getopt::Long 2.24 qw(:config pass_through);
+use Number::Bytes::Human qw(format_bytes);
+
 
 use Data::Dumper;
 $Data::Dumper::Sortkeys = 1;
@@ -112,21 +114,22 @@ sub handle_rrd
 		# Hard-coded, each Ganglia RRD only have the
 		# sum data store.
 		my $is = "ds[sum].$tune2info{$k}";
+		my $oldval = "N/A";
+		my $newval = format_bytes($v, bs=>1000);
+		if(defined($info->{$is})) {
+			$oldval = format_bytes($info->{$is}, bs=>1000);
+		}
+
 		if(defined($info->{$is}) && $info->{$is} == $v) {
-			verbose "$file: $k already $v, skipping\n";
+			verbose "$file: $k already $oldval, skipping\n";
 			next;
 		}
 
-		my $oldval = "N/A";
-		if(defined($info->{$is})) {
-			$oldval = $info->{$is};
-		}
-
 		if($dryrun) {
-			message "$file: want to tune $k from $oldval to $v\n";
+			message "$file: want to tune $k from $oldval to $newval\n";
 		}
 		else {
-			message "$file: tuning $k from $oldval to $v\n";
+			message "$file: tuning $k from $oldval to $newval\n";
 			RRDs::tune $file, @rrdtuneargs, $k, "sum:$v";
 			$rc = RRDs::error;
 			die "Error tuning $k to $v on $file: $rc" if($rc);
