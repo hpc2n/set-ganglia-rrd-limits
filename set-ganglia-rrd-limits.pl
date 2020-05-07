@@ -36,6 +36,7 @@ my $quiet;
 my $verbose;
 my $debug;
 my $rrddir = '/var/lib/ganglia/rrds';
+my $maxage = 90;
 my $dryrun;
 my $help;
 
@@ -62,6 +63,7 @@ Options:
 	--verbose - Be verbose
 	--debug   - Print debug messages
 	--rrddir  - Ganglia RRD base directory (default: $rrddir)
+	--maxage  - Max mtime of RRDs to modify (default: $maxage days)
 	--dry-run - Dry-run, don't apply any changes
 
 Environment variables:
@@ -115,11 +117,16 @@ sub handle_rrd
 			next;
 		}
 
+		my $oldval = "N/A";
+		if(defined($info->{$is})) {
+			$oldval = $info->{$is};
+		}
+
 		if($dryrun) {
-			message "$file: want to tune $k to $v\n";
+			message "$file: want to tune $k from $oldval to $v\n";
 		}
 		else {
-			message "$file: tuning $k to $v\n";
+			message "$file: tuning $k from $oldval to $v\n";
 			RRDs::tune $file, @rrdtuneargs, $k, "sum:$v";
 			$rc = RRDs::error;
 			die "Error tuning $k to $v on $file: $rc" if($rc);
@@ -132,20 +139,33 @@ sub handle_dir
 {
 	my ($dir, $multiplier) = @_;
 
+	my $handled = 0;
+
 	foreach my $rrd (sort keys %tunings) {
 		my $f = "$dir/$rrd";
 
 		next unless(-f $f);
 
+		my $age = -M _;
+
+		if($age > $maxage) {
+			debug "Skipping $f due to age $age\n";
+			next;
+		}
+
 		debug "Found: $f\n";
 
 		handle_rrd($rrd, $f, $multiplier);
+
+		$handled++;
 	}
+
+	return $handled;
 }
 
 # =======================================================================
 
-if(!GetOptions ("quiet" => \$quiet, "verbose" => \$verbose, "debug" => \$debug, "rrddir=s" => \$rrddir, "dry-run|dryrun|noop" => \$dryrun, "help|h" => \$help)) {
+if(!GetOptions ("quiet" => \$quiet, "verbose" => \$verbose, "debug" => \$debug, "rrddir=s" => \$rrddir, "maxage=i" => \$maxage, "dry-run|dryrun|noop" => \$dryrun, "help|h" => \$help)) {
 	usage;
 	die "Command argument parse error\n";
 }
@@ -190,34 +210,48 @@ opendir(my $dh, ".") || die "opendir .: $!";
 my @dirs = grep { $_ !~ '^(\.|__SummaryInfo__)' && -d $_ } readdir($dh);
 closedir($dh);
 
+my $totaldirs = 0;
 my $totalsubdirs = 0;
 
 foreach my $dir (@dirs) {
 	# Support to give a Ganglia RRD subdirectory as rrddir argument
-	handle_dir($dir);
+	if(handle_dir($dir)) {
+		$totaldirs++;
+	}
 
 	# For top level, we need to ascend into the subdirectories
 	opendir(my $sdh, $dir) || die "opendir $dir: $!";
 	my @sdirs = grep { $_ !~ '^(\.|__SummaryInfo__)' && -d "$dir/$_" } readdir($sdh);
 	closedir($sdh);
 
+	my $subdirs = 0;
 	foreach my $sd (@sdirs) {
-		handle_dir("$dir/$sd");
+		if(handle_dir("$dir/$sd")) {
+			$subdirs++;
+		}
 	}
+
+	debug "$dir: $subdirs of total " . scalar(@dirs) . " dirs considered\n";
 
 	# Also add limits to SummaryInfo rrd:s, use number of subdirs as
 	# multiplier.
-	handle_dir("$dir/__SummaryInfo__", scalar(@sdirs));
+	handle_dir("$dir/__SummaryInfo__", $subdirs);
 
-	$totalsubdirs += scalar @sdirs;
+	$totaldirs += $subdirs;
+	$totalsubdirs += $subdirs;
 }
 
-# To support running on a subtree, prefer leaf dirs as count but fall back to
-# toplevel dirs.
-if(!$totalsubdirs) {
-	$totalsubdirs += scalar @dirs;
-}
+debug "totaldirs: $totaldirs\n";
+
 # Also add limits to top level SummaryInfo rrd:s
-handle_dir("__SummaryInfo__", $totalsubdirs);
+if($totaldirs) {
+	my $multiplier = $totaldirs;
+	if($totalsubdirs) {
+		# Avoid setting an insanely large limit on the top-level
+		# SummaryInfo, sqrt() chosen on a whim.
+		$multiplier = int(sqrt($totaldirs));
+	}
+	handle_dir("__SummaryInfo__", $multiplier);
+}
 
 exit 0;
